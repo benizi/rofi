@@ -11,6 +11,28 @@
  *
  * @{
  */
+
+/**
+ * @param args The arguments of the command to exec.
+ * @param error_precmd Prefix to error message command.
+ * @param error_cmd Error message command
+ *
+ * Executes the command
+ *
+ * @returns TRUE when successful, FALSE when failed.
+ */
+gboolean helper_exec ( char **args, const char *error_precmd, const char *error_cmd );
+
+/**
+ * @param cmd The command to run.
+ * @param run_in_term Whether to run the command in a terminal.
+ *
+ * Executes the command
+ *
+ * @returns TRUE when successful, FALSE when failed.
+ */
+gboolean helper_exec_sh ( const char *cmd, gboolean run_in_term );
+
 /**
  * @param string The input string.
  * @param output Pointer to 2 dimensional array with parsed string.

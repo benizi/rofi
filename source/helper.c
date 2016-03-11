@@ -49,10 +49,8 @@
 #include "rofi.h"
 #include "view.h"
 
-extern xcb_connection_t *xcb_connection;
-extern xcb_screen_t     *xcb_screen;
-static int              stored_argc   = 0;
-static char             **stored_argv = NULL;
+static int  stored_argc   = 0;
+static char **stored_argv = NULL;
 
 void cmd_set_arguments ( int argc, char **argv )
 {
@@ -134,6 +132,44 @@ int helper_parse_setup ( char * string, char ***output, int *length, ... )
         g_error_free ( error );
     }
     return FALSE;
+}
+
+gboolean helper_exec ( char **args, const char *error_precmd, const char *error_cmd )
+{
+    gboolean             retv   = TRUE;
+    GError               *error = NULL;
+
+    GSpawnChildSetupFunc child_setup = NULL;
+    gpointer             user_data   = NULL;
+
+    g_spawn_async ( NULL, args, NULL, G_SPAWN_SEARCH_PATH, child_setup, user_data, NULL, &error );
+    if ( error != NULL ) {
+        char *msg = g_strdup_printf ( "Failed to execute: '%s%s'\nError: '%s'", error_precmd, error_cmd, error->message );
+        rofi_view_error_dialog ( msg, FALSE  );
+        g_free ( msg );
+        // print error.
+        g_error_free ( error );
+        retv = FALSE;
+    }
+
+    // Free the args list.
+    g_strfreev ( args );
+    return retv;
+}
+
+gboolean helper_exec_sh ( const char *cmd, gboolean run_in_term )
+{
+    char              **args     = NULL;
+    int               argc       = 0;
+
+    if ( run_in_term ) {
+        helper_parse_setup ( config.run_shell_command, &args, &argc, "{cmd}", cmd, NULL );
+    }
+    else {
+        helper_parse_setup ( config.run_command, &args, &argc, "{cmd}", cmd, NULL );
+    }
+
+    return helper_exec ( args, "", cmd );
 }
 
 char *token_collate_key ( const char *token, int case_sensitive )

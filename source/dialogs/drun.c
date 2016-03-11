@@ -46,33 +46,6 @@
 
 #define DRUN_CACHE_FILE    "rofi.druncache"
 
-static inline int execsh ( const char *cmd, int run_in_term )
-{
-    int  retv   = TRUE;
-    char **args = NULL;
-    int  argc   = 0;
-    if ( run_in_term ) {
-        helper_parse_setup ( config.run_shell_command, &args, &argc, "{cmd}", cmd, NULL );
-    }
-    else {
-        helper_parse_setup ( config.run_command, &args, &argc, "{cmd}", cmd, NULL );
-    }
-    GError *error = NULL;
-    g_spawn_async ( NULL, args, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL, NULL, &error );
-    if ( error != NULL ) {
-        char *msg = g_strdup_printf ( "Failed to execute: '%s'\nError: '%s'", cmd, error->message );
-        rofi_view_error_dialog ( msg, FALSE  );
-        g_free ( msg );
-        // print error.
-        g_error_free ( error );
-        retv = FALSE;
-    }
-
-    // Free the args list.
-    g_strfreev ( args );
-    return retv;
-}
-
 // execute sub-process
 static void exec_cmd ( const char *cmd, int run_in_term )
 {
@@ -80,7 +53,7 @@ static void exec_cmd ( const char *cmd, int run_in_term )
         return;
     }
 
-    execsh ( cmd, run_in_term );
+    helper_exec_sh ( cmd, run_in_term );
 }
 
 /**
@@ -90,15 +63,15 @@ static void exec_cmd ( const char *cmd, int run_in_term )
 typedef struct _DRunModeEntry
 {
     /* Path to desktop file */
-    char         *path;
+    char     *path;
     /* Executable */
-    char         *exec;
+    char     *exec;
     /* Name of the Entry */
-    char         *name;
+    char     *name;
     /* Generic Name */
-    char         *generic_name;
+    char     *generic_name;
     /* Application needs to be launched in terminal. */
-    unsigned int terminal;
+    gboolean terminal;
 } DRunModeEntry;
 
 typedef struct _DRunModePrivateData
@@ -124,7 +97,7 @@ static void exec_cmd_entry ( DRunModeEntry *e )
         }
     }
     gchar *fp = rofi_expand_path ( g_strstrip ( str ) );
-    if ( execsh ( fp, e->terminal ) ) {
+    if ( helper_exec_sh ( fp, e->terminal ) ) {
         char *path = g_build_filename ( cache_dir, DRUN_CACHE_FILE, NULL );
         history_set ( path, e->path );
         g_free ( path );
