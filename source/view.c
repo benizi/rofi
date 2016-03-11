@@ -1414,6 +1414,7 @@ static void rofi_view_mainloop_iter ( RofiViewState *state, xcb_generic_event_t 
                 // If a valid item is selected, return that..
                 state->selected_line = UINT32_MAX;
                 if ( state->selected < state->filtered_lines ) {
+                    xcb->last_timestamp      = xkpe->time;
                     ( state->selected_line ) = state->line_map[state->selected];
                     state->retv              = MENU_OK;
                 }

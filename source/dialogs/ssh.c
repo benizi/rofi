@@ -44,6 +44,8 @@
 #include <helper.h>
 
 #include "rofi.h"
+#include "xcb.h"
+#include "xcb-internal.h"
 #include "settings.h"
 #include "history.h"
 #include "dialogs/ssh.h"
@@ -68,10 +70,22 @@
  */
 static inline int execshssh ( const char *host )
 {
-    char **args = NULL;
-    int  argsv  = 0;
+    char              **args     = NULL;
+    int               argsv      = 0;
+    SnLauncherContext *sncontext = NULL;
+    gsize             l          = strlen ( "Connecting to '' via rofi" ) + strlen ( host ) + 1;
+    char              desc[l];
 
     helper_parse_setup ( config.ssh_command, &args, &argsv, "{host}", host, NULL );
+
+    sncontext = sn_launcher_context_new ( xcb->sndisplay, xcb->screen_nbr );
+
+    sn_launcher_context_set_name ( sncontext, "ssh" );
+
+    g_snprintf ( desc, l, "Connecting to '%s' via rofi", host );
+    sn_launcher_context_set_description ( sncontext, desc );
+
+    sn_launcher_context_initiate ( sncontext, "rofi", "ssh", xcb->last_timestamp );
 
     return helper_exec ( args, sncontext, "ssh ", host );
 }

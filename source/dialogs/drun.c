@@ -53,7 +53,8 @@ static void exec_cmd ( const char *cmd, int run_in_term )
         return;
     }
 
-    helper_exec_sh ( cmd, run_in_term );
+    // FIXME: We assume startup notification in terminals, not in others
+    helper_exec_sh ( cmd, run_in_term, run_in_term, NULL, NULL );
 }
 
 /**
@@ -64,6 +65,8 @@ typedef struct _DRunModeEntry
 {
     /* Path to desktop file */
     char     *path;
+    /* Application id (.desktop filename) */
+    char     *id;
     /* Executable */
     char     *exec;
     /* Name of the Entry */
@@ -72,6 +75,9 @@ typedef struct _DRunModeEntry
     char     *generic_name;
     /* Application needs to be launched in terminal. */
     gboolean terminal;
+    /* Application support startup notification */
+    gboolean sn;
+    char     *wmclass;
 } DRunModeEntry;
 
 typedef struct _DRunModePrivateData
@@ -97,7 +103,7 @@ static void exec_cmd_entry ( DRunModeEntry *e )
         }
     }
     gchar *fp = rofi_expand_path ( g_strstrip ( str ) );
-    if ( helper_exec_sh ( fp, e->terminal ) ) {
+    if ( helper_exec_sh ( fp, e->terminal, e->sn, e->id, e->wmclass ) ) {
         char *path = g_build_filename ( cache_dir, DRUN_CACHE_FILE, NULL );
         history_set ( path, e->path );
         g_free ( path );
@@ -144,9 +150,10 @@ static void read_desktop_file ( DRunModePrivateData *pd, char *path, const char 
     }
     if ( g_key_file_has_key ( kf, "Desktop Entry", "Exec", NULL ) ) {
         size_t nl = ( ( pd->cmd_list_length ) + 1 );
-        pd->entry_list                               = g_realloc ( pd->entry_list, nl * sizeof ( *( pd->entry_list ) ) );
-        pd->entry_list[pd->cmd_list_length].path     = path;
-        pd->entry_list[pd->cmd_list_length].terminal = FALSE;
+        pd->entry_list = g_realloc ( pd->entry_list, nl * sizeof ( *( pd->entry_list ) ) );
+        memset ( &( pd->entry_list[pd->cmd_list_length] ), 0, sizeof ( *( pd->entry_list ) ) );
+        pd->entry_list[pd->cmd_list_length].path = path;
+        pd->entry_list[pd->cmd_list_length].id   = g_path_get_basename ( path );
         if ( g_key_file_has_key ( kf, "Desktop Entry", "Name", NULL ) ) {
             gchar *n  = g_key_file_get_locale_string ( kf, "Desktop Entry", "Name", NULL, NULL );
             gchar *gn = g_key_file_get_locale_string ( kf, "Desktop Entry", "GenericName", NULL, NULL );
@@ -154,12 +161,17 @@ static void read_desktop_file ( DRunModePrivateData *pd, char *path, const char 
             pd->entry_list[pd->cmd_list_length].generic_name = gn;
         }
         else {
-            pd->entry_list[pd->cmd_list_length].name         = g_filename_display_name ( filename );
-            pd->entry_list[pd->cmd_list_length].generic_name = NULL;
+            pd->entry_list[pd->cmd_list_length].name = g_filename_display_name ( filename );
         }
         pd->entry_list[pd->cmd_list_length].exec = g_key_file_get_string ( kf, "Desktop Entry", "Exec", NULL );
         if ( g_key_file_has_key ( kf, "Desktop Entry", "Terminal", NULL ) ) {
             pd->entry_list[pd->cmd_list_length].terminal = g_key_file_get_boolean ( kf, "Desktop Entry", "Terminal", NULL );
+        }
+        if ( g_key_file_has_key ( kf, "Desktop Entry", "StartupNotify", NULL ) ) {
+            pd->entry_list[pd->cmd_list_length].sn = g_key_file_get_boolean ( kf, "Desktop Entry", "StartupNotify", NULL );
+            if ( g_key_file_has_key ( kf, "Desktop Entry", "StartupWMClass", NULL ) ) {
+                pd->entry_list[pd->cmd_list_length].wmclass = g_key_file_get_string ( kf, "Desktop Entry", "StartupWMClass", NULL );
+            }
         }
         ( pd->cmd_list_length )++;
     }
@@ -265,9 +277,11 @@ static int drun_mode_init ( Mode *sw )
 static void drun_entry_clear ( DRunModeEntry *e )
 {
     g_free ( e->path );
+    g_free ( e->id );
     g_free ( e->exec );
     g_free ( e->name );
     g_free ( e->generic_name );
+    g_free ( e->wmclass );
 }
 
 static ModeMode drun_mode_result ( Mode *sw, int mretv, char **input, unsigned int selected_line )

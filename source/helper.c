@@ -48,6 +48,8 @@
 #include "x11-helper.h"
 #include "rofi.h"
 #include "view.h"
+#include "xcb.h"
+#include "xcb-internal.h"
 
 static int  stored_argc   = 0;
 static char **stored_argv = NULL;
@@ -134,13 +136,26 @@ int helper_parse_setup ( char * string, char ***output, int *length, ... )
     return FALSE;
 }
 
-gboolean helper_exec ( char **args, const char *error_precmd, const char *error_cmd )
+gboolean helper_exec ( char **args, SnLauncherContext *sncontext, const char *error_precmd, const char *error_cmd )
 {
     gboolean             retv   = TRUE;
     GError               *error = NULL;
 
     GSpawnChildSetupFunc child_setup = NULL;
     gpointer             user_data   = NULL;
+
+    if ( sncontext != NULL ) {
+        xcb_get_property_cookie_t c;
+        unsigned int              current_desktop = 0;
+
+        c = xcb_ewmh_get_current_desktop ( &xcb->ewmh, xcb->screen_nbr );
+        if ( xcb_ewmh_get_current_desktop_reply ( &xcb->ewmh, c, &current_desktop, NULL ) ) {
+            sn_launcher_context_set_workspace ( sncontext, current_desktop );
+        }
+
+        child_setup = (GSpawnChildSetupFunc) sn_launcher_context_setup_child_process;
+        user_data   = sncontext;
+    }
 
     g_spawn_async ( NULL, args, NULL, G_SPAWN_SEARCH_PATH, child_setup, user_data, NULL, &error );
     if ( error != NULL ) {
@@ -154,13 +169,17 @@ gboolean helper_exec ( char **args, const char *error_precmd, const char *error_
 
     // Free the args list.
     g_strfreev ( args );
+    if ( sncontext != NULL ) {
+        sn_launcher_context_unref ( sncontext );
+    }
     return retv;
 }
 
-gboolean helper_exec_sh ( const char *cmd, gboolean run_in_term )
+gboolean helper_exec_sh ( const char *cmd, gboolean run_in_term, gboolean sn, const char *id, const char *wmclass )
 {
     char              **args     = NULL;
     int               argc       = 0;
+    SnLauncherContext *sncontext = NULL;
 
     if ( run_in_term ) {
         helper_parse_setup ( config.run_shell_command, &args, &argc, "{cmd}", cmd, NULL );
@@ -169,7 +188,28 @@ gboolean helper_exec_sh ( const char *cmd, gboolean run_in_term )
         helper_parse_setup ( config.run_command, &args, &argc, "{cmd}", cmd, NULL );
     }
 
-    return helper_exec ( args, "", cmd );
+    if ( sn ) {
+        gsize l = strlen ( "Launching '' via rofi" ) + strlen ( cmd ) + 1;
+        char  desc[l];
+
+        sncontext = sn_launcher_context_new ( xcb->sndisplay, xcb->screen_nbr );
+
+        if ( id != NULL ) {
+            sn_launcher_context_set_application_id ( sncontext, id );
+        }
+        sn_launcher_context_set_name ( sncontext, cmd );
+
+        g_snprintf ( desc, sizeof ( desc ), "Launching '%s' via rofi", cmd );
+        sn_launcher_context_set_description ( sncontext, desc );
+
+        if ( wmclass != NULL ) {
+            sn_launcher_context_set_wmclass ( sncontext, wmclass );
+        }
+
+        sn_launcher_context_initiate ( sncontext, "rofi", cmd, xcb->last_timestamp );
+    }
+
+    return helper_exec ( args, sncontext, "", cmd );
 }
 
 char *token_collate_key ( const char *token, int case_sensitive )
